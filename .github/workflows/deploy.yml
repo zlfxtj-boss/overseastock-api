@@ -12,10 +12,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       
+      - name: Install Railway CLI
+        run: |
+          npm install -g @railway/cli || pip install railway
+      
       - name: Deploy to Railway
-        uses: bernardob52/railway-deploy@v1
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           RAILWAY_ACCOUNT_TOKEN: ${{ secrets.RAILWAY_ACCOUNT_TOKEN }}
-        with:
-          service: 'overseastock-api'
+        run: |
+          railway login --token "$RAILWAY_TOKEN"
+          railway deploy --service overseastock-api
