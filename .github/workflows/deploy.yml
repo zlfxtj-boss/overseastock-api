@@ -19,7 +19,5 @@ jobs:
       - name: Deploy to Railway
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          RAILWAY_ACCOUNT_TOKEN: ${{ secrets.RAILWAY_ACCOUNT_TOKEN }}
         run: |
-          railway login --token "$RAILWAY_TOKEN"
-          railway deploy --service overseastock-api
+          railway deploy
