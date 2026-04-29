@@ -2,16 +2,42 @@
 
 后端服务，提供商品管理、客户管理、订单管理等功能。
 
-## 部署到 Railway
+## 快速部署
 
-1. Fork 本仓库到您的 GitHub
-2. 登录 [Railway](https://railway.app)
-3. 点击 "New Project" → "Deploy from GitHub repo"
-4. 选择本仓库
-5. 添加 PostgreSQL 数据库：
-   - 在项目面板点击 "Add Plugin"
-   - 选择 "PostgreSQL"
-6. 部署完成！
+### 方式一：Railway CLI（本地部署）
+
+```bash
+# 1. 安装 Railway CLI
+npm install -g @railway/cli
+
+# 2. 登录 Railway
+railway login
+
+# 3. 进入项目目录并初始化
+cd overseastock-api
+railway init
+
+# 4. 添加 PostgreSQL 数据库
+railway add postgresql
+
+# 5. 部署
+railway up
+
+# 6. 查看状态
+railway status
+```
+
+### 方式二：GitHub Actions（自动部署）
+
+1. 在 Railway 生成 Token：
+   - 访问 https://railway.app/account
+   - 创建新 Token
+   
+2. 在 GitHub 仓库添加 Secret：
+   - Settings → Secrets and variables → Actions
+   - 添加 `RAILWAY_TOKEN`
+   
+3. 推送代码后自动部署！
 
 ## 默认账号
 

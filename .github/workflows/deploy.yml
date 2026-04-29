@@ -8,26 +8,13 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
       
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-      
-      - name: Install Railway CLI
-        run: npm install -g @railway/cli
-      
       - name: Deploy to Railway
+        uses: bernardob52/railway-deploy@v1
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: railway up --service oveseastock-api
-      
-      - name: Wait for deployment
-        run: sleep 10
-      
-      - name: Get deployment URL
-        run: railway status
+        with:
+          service: 'overseastock-api'
