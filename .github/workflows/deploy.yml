@@ -16,5 +16,6 @@ jobs:
         uses: bernardob52/railway-deploy@v1
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_ACCOUNT_TOKEN: ${{ secrets.RAILWAY_ACCOUNT_TOKEN }}
         with:
           service: 'overseastock-api'
