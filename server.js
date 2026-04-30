@@ -143,6 +143,7 @@ app.get('/api/products/:id', async (req, res) => {
 // 添加商品
 app.post('/api/products', async (req, res) => {
   if (!pool) return res.status(500).json({ error: '数据库未连接' });
+  try {
     const {
       name, sku, warehouse, price, retailPrice,
       stock, unit, image, currency, currencyName,
