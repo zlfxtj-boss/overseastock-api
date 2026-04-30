@@ -9,14 +9,29 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// PostgreSQL 连接配置
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+// 健康检查
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+// PostgreSQL 连接配置
+let pool;
+if (process.env.DATABASE_URL) {
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
+  });
+} else {
+  console.warn('DATABASE_URL not set, using mock mode');
+}
 
 // 初始化数据库
 async function initDatabase() {
+  if (!pool) {
+    console.log('No database, skipping initialization');
+    return;
+  }
+  
   const client = await pool.connect();
   try {
     // 创建商品表
@@ -95,6 +110,7 @@ async function initDatabase() {
 
 // 获取所有商品
 app.get('/api/products', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: '数据库未连接' });
   try {
     const result = await pool.query(
       'SELECT * FROM products ORDER BY id DESC'
@@ -108,6 +124,7 @@ app.get('/api/products', async (req, res) => {
 
 // 获取单个商品
 app.get('/api/products/:id', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: '数据库未连接' });
   try {
     const result = await pool.query(
       'SELECT * FROM products WHERE id = $1',
@@ -125,7 +142,7 @@ app.get('/api/products/:id', async (req, res) => {
 
 // 添加商品
 app.post('/api/products', async (req, res) => {
-  try {
+  if (!pool) return res.status(500).json({ error: '数据库未连接' });
     const {
       name, sku, warehouse, price, retailPrice,
       stock, unit, image, currency, currencyName,
@@ -150,6 +167,7 @@ app.post('/api/products', async (req, res) => {
 
 // 更新商品
 app.put('/api/products/:id', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: '数据库未连接' });
   try {
     const {
       name, sku, warehouse, price, retailPrice,
@@ -178,6 +196,7 @@ app.put('/api/products/:id', async (req, res) => {
 
 // 删除商品
 app.delete('/api/products/:id', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: '数据库未连接' });
   try {
     const result = await pool.query(
       'DELETE FROM products WHERE id=$1 RETURNING id',
@@ -195,6 +214,7 @@ app.delete('/api/products/:id', async (req, res) => {
 
 // 批量导入商品
 app.post('/api/products/import', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: '数据库未连接' });
   try {
     const { products } = req.body;
     const results = [];
@@ -228,6 +248,7 @@ app.post('/api/products/import', async (req, res) => {
 
 // 管理员登录
 app.post('/api/admin/login', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: '数据库未连接' });
   try {
     const { username, password } = req.body;
     const result = await pool.query(
@@ -254,6 +275,7 @@ app.post('/api/admin/login', async (req, res) => {
 
 // 客户注册
 app.post('/api/customers/register', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: '数据库未连接' });
   try {
     const { username, password } = req.body;
     
@@ -274,6 +296,7 @@ app.post('/api/customers/register', async (req, res) => {
 
 // 客户登录
 app.post('/api/customers/login', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: '数据库未连接' });
   try {
     const { username, password } = req.body;
     const result = await pool.query(
@@ -300,6 +323,7 @@ app.post('/api/customers/login', async (req, res) => {
 
 // 创建订单
 app.post('/api/orders', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: '数据库未连接' });
   try {
     const { customerId, products, total } = req.body;
     
@@ -318,6 +342,7 @@ app.post('/api/orders', async (req, res) => {
 
 // 获取订单列表（管理员）
 app.get('/api/orders', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: '数据库未连接' });
   try {
     const result = await pool.query(
       `SELECT o.*, c.username as customer_name 
@@ -334,6 +359,7 @@ app.get('/api/orders', async (req, res) => {
 
 // 获取客户订单
 app.get('/api/orders/:customerId', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: '数据库未连接' });
   try {
     const result = await pool.query(
       'SELECT * FROM orders WHERE customer_id=$1 ORDER BY created_at DESC',
