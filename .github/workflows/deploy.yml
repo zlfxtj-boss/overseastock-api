@@ -12,14 +12,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       
-      - name: Setup Railway
-        run: |
-          npm install -g @railway/cli
-          railway whoami || echo "Not logged in"
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
       
       - name: Deploy to Railway
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: |
-          railway login --token "$RAILWAY_TOKEN" || true
-          railway deploy --service web
+        run: railway deploy
