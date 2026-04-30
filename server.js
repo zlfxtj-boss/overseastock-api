@@ -19,7 +19,12 @@ let pool;
 if (process.env.DATABASE_URL) {
   pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
+    ssl: { rejectUnauthorized: false },
+    connectionTimeoutMillis: 5000,
+    idleTimeoutMillis: 30000
+  });
+  pool.on('error', (err) => {
+    console.error('Unexpected database error:', err);
   });
 } else {
   console.warn('DATABASE_URL not set, using mock mode');
@@ -32,8 +37,9 @@ async function initDatabase() {
     return;
   }
   
-  const client = await pool.connect();
   try {
+    const client = await pool.connect();
+    console.log('✅ 数据库连接成功');
     // 创建商品表
     await client.query(`
       CREATE TABLE IF NOT EXISTS products (
