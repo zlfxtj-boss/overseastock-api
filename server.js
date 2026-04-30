@@ -37,8 +37,9 @@ async function initDatabase() {
     return;
   }
   
+  let client;
   try {
-    const client = await pool.connect();
+    client = await pool.connect();
     console.log('✅ 数据库连接成功');
     // 创建商品表
     await client.query(`
