@@ -2,7 +2,7 @@ name: Deploy to Railway
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -11,28 +11,23 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      
+
       - name: Install Railway CLI
         run: npm install -g @railway/cli
-      
+
       - name: Configure Railway
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: |
-          railway login --token-provision
-          railway link --token ${{ secrets.RAILWAY_TOKEN }}
-      
-      - name: Get Railway variables
-        id: railway_env
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: |
-          railway variables
-          echo "DATABASE_URL=$DATABASE_URL" >> $GITHUB_ENV
-          echo "Railway env vars retrieved"
-      
+        run: railway link --token $RAILWAY_TOKEN
+
       - name: Deploy to Railway
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: railway up
+        # DATABASE_URL 已通过 Railway Variables 页面配置，无需通过 GitHub Secret 传递
+        run: railway up --detached
+
+      - name: Wait and verify
+        run: |
+          echo "Waiting for deployment..."
+          sleep 30
+          curl -s https://overseastock-api.railway.app/health && echo ""
+          echo "API check:"
+          curl -s https://overseastock-api.railway.app/api/products | head -c 200
