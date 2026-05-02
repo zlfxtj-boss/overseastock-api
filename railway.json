@@ -1,9 +1,12 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
+  "plugins": {
+    "postgresql": {}
+  },
   "build": {
     "builder": "NIXPACKS",
     "nixpacksPlan": {
-      "providers": ["nodejs"]
+      "providers": ["nodejs", "postgresql"]
     }
   },
   "deploy": {
