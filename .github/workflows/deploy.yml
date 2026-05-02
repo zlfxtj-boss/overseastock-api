@@ -15,7 +15,24 @@ jobs:
       - name: Install Railway CLI
         run: npm install -g @railway/cli
       
+      - name: Configure Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          railway login --token-provision
+          railway link --token ${{ secrets.RAILWAY_TOKEN }}
+      
+      - name: Get Railway variables
+        id: railway_env
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          railway variables
+          echo "DATABASE_URL=$DATABASE_URL" >> $GITHUB_ENV
+          echo "Railway env vars retrieved"
+      
       - name: Deploy to Railway
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: railway deploy
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: railway up
