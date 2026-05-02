@@ -254,23 +254,84 @@ app.post('/api/products/import', async (req, res) => {
 
 // ============ 数据初始化 API ============
 
+// 批量导入商品数据
+app.post('/api/import-csv', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: '数据库未连接' });
+  try {
+    const { products } = req.body;
+    if (!products || !Array.isArray(products)) {
+      return res.status(400).json({ error: '无效的商品数据' });
+    }
+    
+    let imported = 0, updated = 0;
+    for (const p of products) {
+      // 仓库映射
+      const warehouseMap = { '美国仓': 'us', '英国仓': 'uk', '德国仓': 'de' };
+      const warehouse = warehouseMap[p.warehouse] || 'us';
+      
+      // 货币映射
+      const currencyMap = { 'us': '$', 'uk': '£', 'de': '€' };
+      const currencyNameMap = { 'us': 'USD', 'uk': 'GBP', 'de': 'EUR' };
+      const currency = currencyMap[warehouse];
+      const currency_name = currencyNameMap[warehouse];
+      
+      const result = await pool.query(
+        `INSERT INTO products 
+         (name, sku, warehouse, price, retail_price, stock, unit, image, currency, currency_name, specs, description)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+         ON CONFLICT (sku) DO UPDATE SET
+         name=EXCLUDED.name, warehouse=EXCLUDED.warehouse, 
+         price=EXCLUDED.price, retail_price=EXCLUDED.retail_price,
+         stock=EXCLUDED.stock, unit=EXCLUDED.unit,
+         specs=EXCLUDED.specs, description=EXCLUDED.description,
+         updated_at=CURRENT_TIMESTAMP`,
+        [p.name, p.sku, warehouse, p.price, p.retailPrice || 0, p.stock || 0, p.unit || '件', '📦', currency, currency_name, JSON.stringify(p.specs || {}), p.description || '']
+      );
+      
+      if (result.rowCount === 1) imported++;
+      else updated++;
+    }
+
+    res.json({ success: true, message: `导入成功: ${imported} 个新增, ${updated} 个更新` });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: '导入失败: ' + err.message });
+  }
+});
+
 // 初始化示例商品数据
 app.post('/api/init-demo', async (req, res) => {
   if (!pool) return res.status(500).json({ error: '数据库未连接' });
   try {
     const demoProducts = [
-      { name: '兰蔻小黑瓶精华液 50ml', sku: 'LANCOME-001', warehouse: 'us', price: 26, retail_price: 32, stock: 156, unit: '件', image: '💧', currency: '$', currency_name: 'USD', specs: { brand: 'Lancôme', origin: '法国', size: '50ml', expiry: '2026年后' }, description: 'Lancôme Génifique 小黑瓶精华液，蕴含7大益生元及酵母精粹，唤醒肌肤年轻活力。' },
-      { name: '雅诗兰黛小棕瓶眼霜 15ml', sku: 'ESTEE-001', warehouse: 'us', price: 22, retail_price: 28, stock: 89, unit: '件', image: '👁️', currency: '$', currency_name: 'USD', specs: { brand: 'Estée Lauder', origin: '美国', size: '15ml', expiry: '2025年后' }, description: 'Advanced Night Repair 修护精华眼霜，深层修护眼周肌肤。' },
-      { name: 'Nike Air Max 270 运动鞋', sku: 'NIKE-270', warehouse: 'us', price: 35, retail_price: 45, stock: 45, unit: '双', image: '👟', currency: '$', currency_name: 'USD', specs: { brand: 'Nike', origin: '越南', size: '标准码', expiry: '长期有效' }, description: 'Air Max 270 男子运动鞋，舒适透气。' },
-      { name: 'Apple AirPods Pro 2代', sku: 'APPLE-APP2', warehouse: 'us', price: 68, retail_price: 89, stock: 23, unit: '个', image: '🎧', currency: '$', currency_name: 'USD', specs: { brand: 'Apple', origin: '中国', size: '标准版', expiry: '长期有效' }, description: 'AirPods Pro (第二代)，主动降噪，自适应通透模式。' },
-      { name: 'SK-II神仙水 230ml', sku: 'SKII-230', warehouse: 'uk', price: 55, retail_price: 68, stock: 67, unit: '件', image: '💎', currency: '£', currency_name: 'GBP', specs: { brand: 'SK-II', origin: '日本', size: '230ml', expiry: '2026年后' }, description: 'SK-II PITERA™ 护肤精华露，肌肤焕亮秘密。' },
-      { name: '戴森吹风机 HD03', sku: 'DYSON-HD03', warehouse: 'uk', price: 185, retail_price: 229, stock: 12, unit: '台', image: '💨', currency: '£', currency_name: 'GBP', specs: { brand: 'Dyson', origin: '马来西亚', size: 'HD03', expiry: '长期有效' }, description: 'Dyson Supersonic 吹风机，快速干发，智能温控。' },
-      { name: 'Adidas Ultraboost 22', sku: 'ADIDAS-UB22', warehouse: 'uk', price: 35, retail_price: 42, stock: 34, unit: '双', image: '👟', currency: '£', currency_name: 'GBP', specs: { brand: 'Adidas', origin: '越南', size: '标准码', expiry: '长期有效' }, description: 'Adidas Ultraboost 22 跑步鞋，Boost中底。' },
-      { name: '香奈儿5号香水 50ml', sku: 'CHANEL-5', warehouse: 'uk', price: 60, retail_price: 75, stock: 28, unit: '瓶', image: '🌸', currency: '£', currency_name: 'GBP', specs: { brand: 'CHANEL', origin: '法国', size: '50ml', expiry: '2027年后' }, description: 'CHANEL N°5 女士香水 EDP，经典永恒。' },
-      { name: '小米手环7 Pro', sku: 'XIAOMI-HB7', warehouse: 'de', price: 22, retail_price: 28, stock: 120, unit: '个', image: '⌚', currency: '€', currency_name: 'EUR', specs: { brand: '小米', origin: '中国', size: '标准版', expiry: '长期有效' }, description: '小米手环 7 Pro，全彩 AMOLED 屏幕。' },
-      { name: '无印良品香薰机', sku: 'MUJI-Aroma', warehouse: 'de', price: 10, retail_price: 12, stock: 56, unit: '台', image: '🕯️', currency: '€', currency_name: 'EUR', specs: { brand: 'MUJI', origin: '中国', size: '标准版', expiry: '长期有效' }, description: 'MUJI 超声波香薰机，静音设计。' },
-      { name: 'LV 经典手提包', sku: 'LV-001', warehouse: 'de', price: 380, retail_price: 450, stock: 5, unit: '个', image: '👜', currency: '€', currency_name: 'EUR', specs: { brand: 'Louis Vuitton', origin: '法国', size: '中号', expiry: '长期有效' }, description: 'Louis Vuitton Neverfull 中号手袋，经典花纹。' },
-      { name: '飞利浦电动牙刷', sku: 'PHILIPS-9330', warehouse: 'de', price: 23, retail_price: 28, stock: 78, unit: '支', image: '🪥', currency: '€', currency_name: 'EUR', specs: { brand: 'Philips', origin: '中国', size: '标准版', expiry: '长期有效' }, description: 'Philips Sonicare Diamond Clean Smart，智能刷牙模式。' },
+      { name: '摇椅', sku: '001', warehouse: 'us', price: 380, retail_price: 210, stock: 10, unit: '件', specs: { size: '138*14*85/54*6*34', weight: '13/27磅' }, description: '尺寸:138*14*85/54*6*34; 重量:13/27磅' },
+      { name: '滚筒款2层-白架-黄木纹板', sku: '002', warehouse: 'us', price: 200, retail_price: 110, stock: 10, unit: '件', specs: { size: '105*65.5*7.5/41*26*3', weight: '9.02磅' }, description: '尺寸:105*65.5*7.5/41*26*3; 重量:9.02磅' },
+      { name: '滚筒款2层-黑架+古橡木板', sku: '003', warehouse: 'us', price: 200, retail_price: 110, stock: 10, unit: '件', specs: {}, description: '' },
+      { name: '滚筒款3层-白架-黄木纹板', sku: '004', warehouse: 'us', price: 210, retail_price: 113, stock: 10, unit: '件', specs: { size: '105*65.5*9/41*26*3.5', weight: '11.12磅' }, description: '尺寸:105*65.5*9/41*26*3.5; 重量:11.12磅' },
+      { name: '【升级实木腿】大杉胡桃色40*35*70', sku: '005', warehouse: 'us', price: 200, retail_price: 102.5, stock: 10, unit: '件', specs: { size: '49*43*13', weight: '7.3-7.95磅' }, description: '尺寸:49*43*13; 重量:7.3-7.95磅' },
+      { name: '户外休闲多功能折叠床55.8黑+珍珠垫', sku: '006', warehouse: 'us', price: 140, retail_price: 105, stock: 10, unit: '件', specs: { size: '68*58*11', weight: '4.45/7.23磅' }, description: '尺寸:68*58*11; 重量:4.45/7.23磅' },
+      { name: '洞洞板置物架黑色四层', sku: '007', warehouse: 'us', price: 320, retail_price: 395, stock: 10, unit: '件', specs: { size: '34*40*66', weight: '16.5磅' }, description: '尺寸:34*40*66; 重量:16.5磅' },
+      { name: '洞洞板置物架白色四层', sku: '008', warehouse: 'us', price: 340, retail_price: 0, stock: 10, unit: '件', specs: { size: '34*40*66', weight: '16.5磅' }, description: '尺寸:34*40*66; 重量:16.5磅' },
+      { name: '洞洞板置物架白色五层', sku: '009', warehouse: 'us', price: 340, retail_price: 0, stock: 10, unit: '件', specs: { size: '44*40*76', weight: '18.5磅' }, description: '尺寸:44*40*76; 重量:18.5磅' },
+      { name: '洞洞板置物架黑色五层', sku: '010', warehouse: 'us', price: 340, retail_price: 0, stock: 10, unit: '件', specs: { size: '44*40*76', weight: '18.5磅' }, description: '尺寸:44*40*76; 重量:18.5磅' },
+      { name: '多功能储物沥水篮白色55', sku: '011', warehouse: 'us', price: 220, retail_price: 325, stock: 5, unit: '件', specs: { size: '78*22*36', weight: '6.2/10.3磅' }, description: '尺寸:78*22*36; 重量:6.2/10.3磅' },
+      { name: '多功能储物沥水篮黑色55', sku: '012', warehouse: 'us', price: 220, retail_price: 0, stock: 5, unit: '件', specs: { size: '78*22*36', weight: '6.2/10.3磅' }, description: '尺寸:78*22*36; 重量:6.2/10.3磅' },
+      { name: '多功能储物沥水篮白色65', sku: '013', warehouse: 'us', price: 220, retail_price: 0, stock: 5, unit: '件', specs: { size: '78*22*36', weight: '6.2/10.3磅' }, description: '尺寸:78*22*36; 重量:6.2/10.3磅' },
+      { name: '多功能储物沥水篮黑色65', sku: '014', warehouse: 'us', price: 220, retail_price: 0, stock: 5, unit: '件', specs: { size: '78*22*36', weight: '6.2/10.3磅' }, description: '尺寸:78*22*36; 重量:6.2/10.3磅' },
+      { name: '马桶坐便改蹲便蹲', sku: '015', warehouse: 'us', price: 130, retail_price: 95, stock: 10, unit: '件', specs: { size: '44*50*11', weight: '4.25磅' }, description: '尺寸:44*50*11; 重量:4.25磅' },
+      { name: '折叠可移动小推车置物架', sku: '016', warehouse: 'us', price: 120, retail_price: 115, stock: 10, unit: '件', specs: { size: '73*50*12', weight: '3.65/7.3磅' }, description: '尺寸:73*50*12; 重量:3.65/7.3磅' },
+      { name: '厨房用品免安装折叠白色三层', sku: '017', warehouse: 'us', price: 140, retail_price: 130, stock: 10, unit: '件', specs: { size: '89*40*9', weight: '5/5.34磅' }, description: '尺寸:89*40*9; 重量:5/5.34磅' },
+      { name: '厨房用品免安装折叠黑色三层', sku: '018', warehouse: 'us', price: 140, retail_price: 0, stock: 10, unit: '件', specs: { size: '89*40*9', weight: '5/5.34磅' }, description: '尺寸:89*40*9; 重量:5/5.34磅' },
+      { name: '厨房用品免安装折叠白色四层', sku: '019', warehouse: 'us', price: 140, retail_price: 0, stock: 10, unit: '件', specs: { size: '89*40*9', weight: '6/6.34磅' }, description: '尺寸:89*40*9; 重量:6/6.34磅' },
+      { name: '厨房用品免安装折叠黑色四层', sku: '020', warehouse: 'us', price: 140, retail_price: 0, stock: 10, unit: '件', specs: { size: '89*40*9', weight: '6/6.34磅' }, description: '尺寸:89*40*9; 重量:6/6.34磅' },
+      { name: '灰色圆管【中宽-珍珠垫】', sku: '021', warehouse: 'us', price: 190, retail_price: 210, stock: 10, unit: '件', specs: { size: '114*25*19', weight: '7.05/9.02磅' }, description: '尺寸:114*25*19; 重量:7.05/9.02磅' },
+      { name: '黑架+【雪山白岩板】60+45组合', sku: '022', warehouse: 'us', price: 410, retail_price: 370, stock: 5, unit: '件', specs: { size: '64*64*48', weight: '18/33磅' }, description: '尺寸:64*64*48; 重量:18/33磅' },
+      { name: '爆款:直径60cm【高度45cm】', sku: '023', warehouse: 'us', price: 410, retail_price: 0, stock: 5, unit: '件', specs: { size: '64*64*48', weight: '10/33磅' }, description: '尺寸:64*64*48; 重量:10/33磅' },
+      { name: '滚筒洗衣机置物架三层', sku: '024', warehouse: 'us', price: 180, retail_price: 110, stock: 5, unit: '件', specs: { size: '100*43*10', weight: '8磅' }, description: '尺寸:100*43*10; 重量:8磅' },
+      { name: '滚筒洗衣机置物架二层', sku: '025', warehouse: 'us', price: 160, retail_price: 110, stock: 5, unit: '件', specs: { size: '100*43*10', weight: '6.1磅' }, description: '尺寸:100*43*10; 重量:6.1磅' },
+      { name: '带挂钩洗衣机架两层黑色', sku: '026', warehouse: 'us', price: 36, retail_price: 105, stock: 16, unit: '件', specs: { size: '74.5*20*11', weight: '2.17磅' }, description: '尺寸:74.5*20*11; 重量:2.17磅' },
+      { name: '带挂钩洗衣机架两层白色', sku: '027', warehouse: 'us', price: 36, retail_price: 105, stock: 16, unit: '件', specs: { size: '74.5*20*11', weight: '2.17磅' }, description: '尺寸:74.5*20*11; 重量:2.17磅' },
+      { name: '旋转凳', sku: '028', warehouse: 'us', price: 119, retail_price: 175, stock: 10, unit: '件', specs: { size: '40*40*55', weight: '4磅' }, description: '尺寸:40*40*55; 重量:4磅' },
     ];
 
     let imported = 0;
@@ -283,14 +344,16 @@ app.post('/api/init-demo', async (req, res) => {
          ON CONFLICT (sku) DO UPDATE SET
          name=EXCLUDED.name, warehouse=EXCLUDED.warehouse, 
          price=EXCLUDED.price, retail_price=EXCLUDED.retail_price,
-         stock=EXCLUDED.stock, updated_at=CURRENT_TIMESTAMP`,
+         stock=EXCLUDED.stock, unit=EXCLUDED.unit,
+         specs=EXCLUDED.specs, description=EXCLUDED.description,
+         updated_at=CURRENT_TIMESTAMP`,
         [p.name, p.sku, p.warehouse, p.price, p.retail_price, p.stock, 
-         p.unit, p.image, p.currency, p.currency_name, JSON.stringify(p.specs), p.description]
+         p.unit, '📦', '$', 'USD', JSON.stringify(p.specs), p.description]
       );
       imported++;
     }
 
-    res.json({ success: true, message: `成功导入 ${imported} 个示例商品` });
+    res.json({ success: true, message: `成功导入 ${imported} 个美国仓商品` });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: '初始化失败' });
