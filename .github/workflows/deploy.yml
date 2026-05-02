@@ -12,22 +12,59 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Railway CLI
-        run: npm install -g @railway/cli
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
 
-      - name: Configure Railway
+      - name: Deploy via Railway API
         env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: railway link --token $RAILWAY_TOKEN
-
-      - name: Deploy to Railway
-        # DATABASE_URL 已通过 Railway Variables 页面配置，无需通过 GitHub Secret 传递
-        run: railway up --detached
-
-      - name: Wait and verify
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_ACCOUNT_TOKEN }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          echo "Waiting for deployment..."
-          sleep 30
-          curl -s https://overseastock-api.railway.app/health && echo ""
-          echo "API check:"
-          curl -s https://overseastock-api.railway.app/api/products | head -c 200
+          echo "=== 1. 测试 Railway Token 有效性 ==="
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            "https://railway.app/api/v1/users/me")
+          echo "Railway API status: $STATUS"
+          
+          echo ""
+          echo "=== 2. 获取 overseastock-api 项目 ID ==="
+          PROJECTS=$(curl -s \
+            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            "https://railway.app/api/v1/users/me")
+          echo "Projects response: $PROJECTS"
+          
+          echo ""
+          echo "=== 3. 使用 Railway CLI 部署 ==="
+          npm install -g @railway/cli
+          
+          # 非交互式登录
+          echo "$RAILWAY_TOKEN" | railway login --token-provision 2>&1 || true
+          
+          # 列出可用的项目和 token
+          railway whoami 2>&1 || echo "Login failed"
+          
+          echo ""
+          echo "=== 4. 尝试直接 railway up ==="
+          railway up --detached 2>&1 || {
+            echo "railway up failed, trying with project ID..."
+            PROJECT_ID=$(echo "$PROJECTS" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+            echo "Found project ID: $PROJECT_ID"
+            if [ -n "$PROJECT_ID" ]; then
+              echo "$RAILWAY_TOKEN" | railway link --project-id "$PROJECT_ID" 2>&1 || true
+              railway up --detached 2>&1
+            fi
+          }
+          
+          echo ""
+          echo "=== 5. 等待部署完成 ==="
+          sleep 45
+          
+          echo ""
+          echo "=== 6. 验证部署结果 ==="
+          echo "Health check:"
+          curl -s "https://overseastock-api.railway.app/health"
+          echo ""
+          echo "API products check:"
+          curl -s "https://overseastock-api.railway.app/api/products" -w "\nHTTP: %{http_code}"
