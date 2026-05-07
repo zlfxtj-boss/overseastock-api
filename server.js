@@ -113,6 +113,26 @@ async function initDatabase() {
   }
 }
 
+// ============ 管理员重置 API（临时） ============
+
+// 重置管理员账号 - 创建或更新admin/admin123
+app.post('/api/reset-admin', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: '数据库未连接' });
+  try {
+    // 先删除现有管理员
+    await pool.query("DELETE FROM admins WHERE username = 'admin'");
+    // 创建新管理员
+    await pool.query(
+      "INSERT INTO admins (username, password) VALUES ('admin', 'admin123')"
+    );
+    console.log('✅ 管理员重置成功: admin / admin123');
+    res.json({ success: true, message: '管理员账号已重置为 admin/admin123' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: '重置失败: ' + err.message });
+  }
+});
+
 // ============ 商品 API ============
 
 // 获取所有商品
