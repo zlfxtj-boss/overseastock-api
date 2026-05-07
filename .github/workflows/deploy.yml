@@ -12,64 +12,101 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Railway CLI
-        uses: MadeByThePinsHub/setup-railway-cli-action@v0.1.0
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          token: ${{ secrets.RAILWAY_ACCOUNT_TOKEN }}
+          node-version: '18'
 
-      - name: Link Project
+      - name: Install Railway CLI
         run: |
-          echo "=== 链接或创建项目 ==="
+          echo "=== 安装 Railway CLI ==="
+          curl -fsSL https://railway.app/install.sh | sh
+          echo "$HOME/.railway/bin" >> $GITHUB_PATH
+          
+      - name: Configure Railway Token
+        run: |
+          echo "=== 配置 Railway Token ==="
+          # 创建配置文件
+          mkdir -p ~/.railway
+          echo '${{ secrets.RAILWAY_ACCOUNT_TOKEN }}' > ~/.railway/token
+          
+          echo "=== 验证 CLI ==="
+          railway --version
+          railway whoami || echo "whoami 失败，但继续..."
+
+      - name: Link or Create Project
+        run: |
+          echo "=== 链接项目 ==="
           cd ${{ github.workspace }}
           
-          # 尝试链接现有项目
-          railway link --project-name overseastock 2>&1 || \
-          railway link --project-name overseastock-api 2>&1 || \
-          railway link --project-name overseastock-production 2>&1 || {
-            echo "链接现有项目失败，尝试创建新项目..."
-            railway init --name overseastock-api --no-interactive 2>&1 || true
-          }
+          # 尝试按名称链接项目
+          echo "尝试链接 overseastock..."
+          railway link --project-name overseastock 2>&1 && echo "✅ 链接成功" && exit 0
           
-          # 验证链接状态
+          echo "尝试链接 overseastock-api..."
+          railway link --project-name overseastock-api 2>&1 && echo "✅ 链接成功" && exit 0
+          
+          echo "尝试链接 overseastock-production..."
+          railway link --project-name overseastock-production 2>&1 && echo "✅ 链接成功" && exit 0
+          
+          echo "链接失败，尝试创建新项目..."
+          railway init --name overseastock-api --no-interactive 2>&1 || true
+          
+          echo "=== 当前状态 ==="
           railway status 2>&1 || true
-          railway whoami 2>&1 || true
 
-      - name: Deploy to Railway
+      - name: Deploy
         run: |
           echo "=== 部署到 Railway ==="
           cd ${{ github.workspace }}
           
+          # 安装依赖
+          npm install 2>&1 || true
+          
           # 设置环境变量
-          echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" >> $GITHUB_ENV
           echo "NODE_ENV=production" >> $GITHUB_ENV
           
           # 执行部署
-          railway up --detach 2>&1
+          railway up --detach 2>&1 || {
+            echo "部署命令失败，尝试备用方法..."
+            railway up 2>&1
+          }
           
-          echo "=== 等待部署完成 ==="
-          sleep 30
-          
-          echo "=== 查看部署状态 ==="
-          railway status 2>&1 || true
+          echo "=== 等待部署 ==="
+          sleep 60
 
-      - name: Verify Deployment
+      - name: Check Logs
+        if: success() == false
+        run: |
+          echo "=== 检查部署日志 ==="
+          railway logs --n 50 2>&1 || true
+
+      - name: Verify
         run: |
           echo "=== 验证部署 ==="
           
-          # 尝试多个可能的 URL
+          sleep 10
+          
           URLs=(
             "https://overseastock-api.up.railway.app"
             "https://overseastock-production.up.railway.app"
+            "https://overseastock-api.railway.app"
           )
           
           for url in "${URLs[@]}"; do
             echo "测试: $url"
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 "$url/health" 2>/dev/null)
-            echo "状态码: $STATUS"
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 15 "$url/health" 2>/dev/null)
+            echo "状态: $STATUS"
+            
             if [ "$STATUS" = "200" ]; then
-              echo "✅ 部署成功: $url"
-              echo "health: $(curl -s $url/health)"
-              echo "api/products: $(curl -s $url/api/products | head -100)"
+              echo "✅ 可用: $url"
+              echo "Health: $(curl -s $url/health)"
+              
+              # 测试 API
+              API_RESP=$(curl -s --connect-timeout 10 "$url/api/products" 2>/dev/null)
+              if echo "$API_RESP" | grep -q '\[' || echo "$API_RESP" | grep -q 'Not Found'; then
+                echo "API 响应: $API_RESP"
+              fi
               break
             fi
           done
