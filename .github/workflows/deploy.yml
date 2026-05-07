@@ -12,59 +12,64 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Railway CLI
+        uses: MadeByThePinsHub/setup-railway-cli-action@v0.1.0
         with:
-          node-version: '18'
+          token: ${{ secrets.RAILWAY_ACCOUNT_TOKEN }}
 
-      - name: Deploy via Railway API
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_ACCOUNT_TOKEN }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      - name: Link Project
         run: |
-          echo "=== 1. 测试 Railway Token 有效性 ==="
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            -H "Authorization: Bearer $RAILWAY_TOKEN" \
-            "https://railway.app/api/v1/users/me")
-          echo "Railway API status: $STATUS"
+          echo "=== 链接或创建项目 ==="
+          cd ${{ github.workspace }}
           
-          echo ""
-          echo "=== 2. 获取 overseastock-api 项目 ID ==="
-          PROJECTS=$(curl -s \
-            -H "Authorization: Bearer $RAILWAY_TOKEN" \
-            "https://railway.app/api/v1/users/me")
-          echo "Projects response: $PROJECTS"
-          
-          echo ""
-          echo "=== 3. 使用 Railway CLI 部署 ==="
-          npm install -g @railway/cli
-          
-          # 非交互式登录
-          echo "$RAILWAY_TOKEN" | railway login --token-provision 2>&1 || true
-          
-          # 列出可用的项目和 token
-          railway whoami 2>&1 || echo "Login failed"
-          
-          echo ""
-          echo "=== 4. 尝试直接 railway up ==="
-          railway up --detached 2>&1 || {
-            echo "railway up failed, trying with project ID..."
-            PROJECT_ID=$(echo "$PROJECTS" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
-            echo "Found project ID: $PROJECT_ID"
-            if [ -n "$PROJECT_ID" ]; then
-              echo "$RAILWAY_TOKEN" | railway link --project-id "$PROJECT_ID" 2>&1 || true
-              railway up --detached 2>&1
-            fi
+          # 尝试链接现有项目
+          railway link --project-name overseastock 2>&1 || \
+          railway link --project-name overseastock-api 2>&1 || \
+          railway link --project-name overseastock-production 2>&1 || {
+            echo "链接现有项目失败，尝试创建新项目..."
+            railway init --name overseastock-api --no-interactive 2>&1 || true
           }
           
-          echo ""
-          echo "=== 5. 等待部署完成 ==="
-          sleep 45
+          # 验证链接状态
+          railway status 2>&1 || true
+          railway whoami 2>&1 || true
+
+      - name: Deploy to Railway
+        run: |
+          echo "=== 部署到 Railway ==="
+          cd ${{ github.workspace }}
           
-          echo ""
-          echo "=== 6. 验证部署结果 ==="
-          echo "Health check:"
-          curl -s "https://overseastock-api.railway.app/health"
-          echo ""
-          echo "API products check:"
-          curl -s "https://overseastock-api.railway.app/api/products" -w "\nHTTP: %{http_code}"
+          # 设置环境变量
+          echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" >> $GITHUB_ENV
+          echo "NODE_ENV=production" >> $GITHUB_ENV
+          
+          # 执行部署
+          railway up --detach 2>&1
+          
+          echo "=== 等待部署完成 ==="
+          sleep 30
+          
+          echo "=== 查看部署状态 ==="
+          railway status 2>&1 || true
+
+      - name: Verify Deployment
+        run: |
+          echo "=== 验证部署 ==="
+          
+          # 尝试多个可能的 URL
+          URLs=(
+            "https://overseastock-api.up.railway.app"
+            "https://overseastock-production.up.railway.app"
+          )
+          
+          for url in "${URLs[@]}"; do
+            echo "测试: $url"
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 "$url/health" 2>/dev/null)
+            echo "状态码: $STATUS"
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ 部署成功: $url"
+              echo "health: $(curl -s $url/health)"
+              echo "api/products: $(curl -s $url/api/products | head -100)"
+              break
+            fi
+          done
