@@ -64,3 +64,4 @@ railway status
 - `POST /api/orders` - 创建订单
 - `GET /api/orders` - 获取所有订单（管理员）
 - `GET /api/orders/:customerId` - 获取客户订单
+# 触发 Railway 部署
