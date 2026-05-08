@@ -4,3 +4,6 @@ dockerfilePath = "Dockerfile"
 
 [deploy]
 numReplicas = 1
+
+[railway]
+port = 8080
