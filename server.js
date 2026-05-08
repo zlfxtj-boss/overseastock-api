@@ -319,10 +319,16 @@ app.post('/api/import-csv', async (req, res) => {
   }
 });
 
-// 初始化示例商品数据
+// 初始化示例商品数据（仅在数据库为空时）
 app.post('/api/init-demo', async (req, res) => {
   if (!pool) return res.status(500).json({ error: '数据库未连接' });
   try {
+    // 检查是否已有数据
+    const existing = await pool.query('SELECT COUNT(*) FROM products');
+    if (parseInt(existing.rows[0].count) > 0) {
+      return res.json({ success: true, message: `数据库已有 ${existing.rows[0].count} 个商品，无需重复初始化` });
+    }
+    
     const demoProducts = [
       { name: '摇椅', sku: '001', warehouse: 'us', price: 380, retail_price: 210, stock: 10, unit: '件', specs: { size: '138*14*85/54*6*34', weight: '13/27磅' }, description: '尺寸:138*14*85/54*6*34; 重量:13/27磅' },
       { name: '滚筒款2层-白架-黄木纹板', sku: '002', warehouse: 'us', price: 200, retail_price: 110, stock: 10, unit: '件', specs: { size: '105*65.5*7.5/41*26*3', weight: '9.02磅' }, description: '尺寸:105*65.5*7.5/41*26*3; 重量:9.02磅' },
