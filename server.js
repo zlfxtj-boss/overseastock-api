@@ -1,6 +1,15 @@
 const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+
+// JWT密钥 - 生产环境应从环境变量读取
+const JWT_SECRET = process.env.JWT_SECRET || 'overseastock-secret-key-2026';
+const JWT_EXPIRES_IN = '7d';
+
+// 密码加密salt rounds
+const SALT_ROUNDS = 10;
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -96,15 +105,27 @@ async function initDatabase() {
       )
     `);
 
-    // 创建默认管理员（如果不存在）
+    // 创建默认管理员（如果不存在）- 使用bcrypt加密密码
     const adminResult = await client.query(
       "SELECT id FROM admins WHERE username = 'admin'"
     );
     if (adminResult.rows.length === 0) {
+      const hashedPassword = await bcrypt.hash('admin123', SALT_ROUNDS);
       await client.query(
-        "INSERT INTO admins (username, password) VALUES ('admin', 'admin123')"
+        "INSERT INTO admins (username, password) VALUES ($1, $2)",
+        ['admin', hashedPassword]
       );
-      console.log('✅ 默认管理员已创建: admin / admin123');
+      console.log('✅ 默认管理员已创建: admin / admin123 (密码已加密)');
+    } else {
+      // 检查现有管理员密码是否已加密（bcrypt哈希以$2开头）
+      const admin = adminResult.rows[0];
+      const pwdCheck = await client.query('SELECT password FROM admins WHERE id = $1', [admin.id]);
+      if (pwdCheck.rows[0]?.password && !pwdCheck.rows[0].password.startsWith('$2')) {
+        // 密码未加密，更新为加密版本
+        const hashedPassword = await bcrypt.hash(pwdCheck.rows[0].password, SALT_ROUNDS);
+        await client.query('UPDATE admins SET password = $1 WHERE id = $2', [hashedPassword, admin.id]);
+        console.log('✅ 已将管理员密码升级为加密版本');
+      }
     }
 
     console.log('✅ 数据库表初始化完成');
@@ -115,18 +136,20 @@ async function initDatabase() {
 
 // ============ 管理员重置 API（临时） ============
 
-// 重置管理员账号 - 创建或更新admin/admin123
+// 重置管理员账号 - 创建或更新admin/admin123 (使用bcrypt加密)
 app.post('/api/reset-admin', async (req, res) => {
   if (!pool) return res.status(500).json({ error: '数据库未连接' });
   try {
+    const hashedPassword = await bcrypt.hash('admin123', SALT_ROUNDS);
     // 先删除现有管理员
     await pool.query("DELETE FROM admins WHERE username = 'admin'");
-    // 创建新管理员
+    // 创建新管理员（密码已加密）
     await pool.query(
-      "INSERT INTO admins (username, password) VALUES ('admin', 'admin123')"
+      "INSERT INTO admins (username, password) VALUES ('admin', $1)",
+      [hashedPassword]
     );
-    console.log('✅ 管理员重置成功: admin / admin123');
-    res.json({ success: true, message: '管理员账号已重置为 admin/admin123' });
+    console.log('✅ 管理员重置成功: admin / admin123 (bcrypt加密)');
+    res.json({ success: true, message: '管理员账号已重置为 admin/admin123（密码已加密存储）' });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: '重置失败: ' + err.message });
@@ -388,24 +411,54 @@ app.post('/api/init-demo', async (req, res) => {
 
 // ============ 管理员 API ============
 
-// 管理员登录
+// 管理员登录 - 使用bcrypt验证密码和JWT Token
 app.post('/api/admin/login', async (req, res) => {
   if (!pool) return res.status(500).json({ error: '数据库未连接' });
   try {
     const { username, password } = req.body;
+    
+    if (!username || !password) {
+      return res.status(400).json({ error: '用户名和密码不能为空' });
+    }
+    
     const result = await pool.query(
-      'SELECT id, username FROM admins WHERE username=$1 AND password=$2',
-      [username, password]
+      'SELECT id, username, password FROM admins WHERE username=$1',
+      [username]
     );
     
     if (result.rows.length === 0) {
       return res.status(401).json({ error: '用户名或密码错误' });
     }
     
+    const admin = result.rows[0];
+    
+    // 使用bcrypt验证密码
+    const isValidPassword = await bcrypt.compare(password, admin.password);
+    
+    // 如果密码不是bcrypt格式（旧的明文），尝试明文比对（向后兼容）
+    const isPlainTextMatch = !admin.password.startsWith('$2') && password === admin.password;
+    
+    if (!isValidPassword && !isPlainTextMatch) {
+      return res.status(401).json({ error: '用户名或密码错误' });
+    }
+    
+    // 密码验证成功后，如果密码是明文格式则升级为bcrypt
+    if (!admin.password.startsWith('$2')) {
+      const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+      await pool.query('UPDATE admins SET password = $1 WHERE id = $2', [hashedPassword, admin.id]);
+    }
+    
+    // 生成JWT Token
+    const token = jwt.sign(
+      { userId: admin.id, username: admin.username, role: 'admin' },
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRES_IN }
+    );
+    
     res.json({ 
       success: true, 
-      token: 'admin-token-' + Date.now(),
-      user: result.rows[0]
+      token: token,
+      user: { id: admin.id, username: admin.username }
     });
   } catch (err) {
     console.error(err);
@@ -415,15 +468,22 @@ app.post('/api/admin/login', async (req, res) => {
 
 // ============ 客户 API ============
 
-// 客户注册
+// 客户注册 - 使用bcrypt加密密码
 app.post('/api/customers/register', async (req, res) => {
   if (!pool) return res.status(500).json({ error: '数据库未连接' });
   try {
     const { username, password } = req.body;
     
+    if (!username || !password) {
+      return res.status(400).json({ error: '用户名和密码不能为空' });
+    }
+    
+    // 密码加密
+    const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+    
     const result = await pool.query(
       'INSERT INTO customers (username, password) VALUES ($1, $2) RETURNING id, username',
-      [username, password]
+      [username, hashedPassword]
     );
     
     res.json({ success: true, user: result.rows[0] });
@@ -436,24 +496,54 @@ app.post('/api/customers/register', async (req, res) => {
   }
 });
 
-// 客户登录
+// 客户登录 - 使用bcrypt验证密码和JWT Token
 app.post('/api/customers/login', async (req, res) => {
   if (!pool) return res.status(500).json({ error: '数据库未连接' });
   try {
     const { username, password } = req.body;
+    
+    if (!username || !password) {
+      return res.status(400).json({ error: '用户名和密码不能为空' });
+    }
+    
     const result = await pool.query(
-      'SELECT id, username FROM customers WHERE username=$1 AND password=$2',
-      [username, password]
+      'SELECT id, username, password FROM customers WHERE username=$1',
+      [username]
     );
     
     if (result.rows.length === 0) {
       return res.status(401).json({ error: '用户名或密码错误' });
     }
     
+    const customer = result.rows[0];
+    
+    // 使用bcrypt验证密码
+    const isValidPassword = await bcrypt.compare(password, customer.password);
+    
+    // 如果密码不是bcrypt格式（旧的明文），尝试明文比对（向后兼容）
+    const isPlainTextMatch = !customer.password.startsWith('$2') && password === customer.password;
+    
+    if (!isValidPassword && !isPlainTextMatch) {
+      return res.status(401).json({ error: '用户名或密码错误' });
+    }
+    
+    // 密码验证成功后，如果密码是明文格式则升级为bcrypt
+    if (!customer.password.startsWith('$2')) {
+      const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+      await pool.query('UPDATE customers SET password = $1 WHERE id = $2', [hashedPassword, customer.id]);
+    }
+    
+    // 生成JWT Token
+    const token = jwt.sign(
+      { userId: customer.id, username: customer.username, role: 'customer' },
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRES_IN }
+    );
+    
     res.json({ 
       success: true, 
-      token: 'customer-token-' + Date.now(),
-      user: result.rows[0]
+      token: token,
+      user: { id: customer.id, username: customer.username }
     });
   } catch (err) {
     console.error(err);
