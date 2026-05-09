@@ -18,8 +18,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: package-lock.json
 
       - name: Install Railway CLI
         run: npm install -g @railway/cli
@@ -37,56 +35,32 @@ jobs:
           echo "=== Railway 登录状态 ==="
           railway whoami || echo "登录失败"
           
-          echo "=== 查找现有项目 ==="
-          railway status || true
-          
           # 尝试链接项目
-          if railway link --project-name overseastock-api 2>/dev/null; then
-            echo "✅ 已链接 overseastock-api"
-          elif railway link --project-name overseastock 2>/dev/null; then
-            echo "✅ 已链接 overseastock"  
-          elif railway link --project-name overseastock-production 2>/dev/null; then
-            echo "✅ 已链接 overseastock-production"
-          else
-            echo "⚠️ 无法链接到现有项目"
-          fi
+          echo "=== 链接项目 ==="
+          railway link --project-name overseastock-api 2>/dev/null && echo "✅ 已链接 overseastock-api" && exit 0
+          railway link --project-name overseastock 2>/dev/null && echo "✅ 已链接 overseastock" && exit 0
+          railway link --project-name overseastock-production 2>/dev/null && echo "✅ 已链接 overseastock-production" && exit 0
+          echo "⚠️ 无法链接到现有项目"
 
       - name: Deploy to Railway
         run: |
           echo "=== 部署到 Railway ==="
-          railway up --detach 2>&1 || {
-            echo "直接部署失败，尝试环境变量..."
-          }
+          railway up --detach 2>&1 || echo "部署命令执行"
 
       - name: Wait for Deployment
-        run: |
-          echo "=== 等待 Railway 部署 ==="
-          sleep 60
+        run: sleep 60
 
       - name: Verify Deployment
         run: |
-          echo "=== 验证部署状态 ==="
-          
-          # 尝试多个可能的URL
+          echo "=== 验证部署 ==="
           for url in \
             "https://overseastock-api-production.up.railway.app/health" \
-            "https://overseastock-api.up.railway.app/health" \
-            "https://overseastock-production.up.railway.app/health"
+            "https://overseastock-api.railway.app/health"
           do
             echo "测试: $url"
-            response=$(curl -s --max-time 10 "$url" 2>/dev/null || echo "failed")
-            if echo "$response" | grep -q "ok"; then
+            if curl -sf --max-time 10 "$url" | grep -q "ok"; then
               echo "✅ 成功: $url"
-              echo "响应: $response"
               exit 0
             fi
           done
-          
-          echo "⚠️ 所有URL验证失败，但部署可能仍在进行中"
-          echo "请手动检查: https://railway.app/dashboard"
-
-      - name: Get Railway Domain
-        if: success()
-        run: |
-          echo "=== 获取 Railway 域名 ==="
-          railway domain 2>/dev/null || echo "无法获取域名"
+          echo "⚠️ 部署验证失败，请手动检查 Railway Dashboard"
