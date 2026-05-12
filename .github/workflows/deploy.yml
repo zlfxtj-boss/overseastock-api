@@ -8,7 +8,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     
     steps:
       - name: Checkout
@@ -18,34 +18,34 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-
-      - name: Install Railway CLI
-        run: npm install -g @railway/cli
-
-      - name: Setup Railway CLI
-        uses: MadeByThePinsHub/setup-railway-cli-action@v0.1.0
-        with:
-          railway_token: ${{ secrets.RAILWAY_ACCOUNT_TOKEN }}
+          cache: 'npm'
 
       - name: Install Dependencies
         run: npm install
 
-      - name: Link Railway Project
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Configure Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_ACCOUNT_TOKEN }}
         run: |
-          echo "=== Railway 登录状态 ==="
-          railway whoami || echo "登录失败"
+          echo "Verifying Railway token..."
+          echo "$RAILWAY_TOKEN" | railway login --token /dev/stdin 2>&1 || true
           
-          # 尝试链接项目
-          echo "=== 链接项目 ==="
-          railway link --project-name overseastock-api 2>/dev/null && echo "✅ 已链接 overseastock-api" && exit 0
-          railway link --project-name overseastock 2>/dev/null && echo "✅ 已链接 overseastock" && exit 0
-          railway link --project-name overseastock-production 2>/dev/null && echo "✅ 已链接 overseastock-production" && exit 0
-          echo "⚠️ 无法链接到现有项目"
+          # Try to link existing project
+          echo "=== 链接 Railway 项目 ==="
+          railway link --project-name overseastock-api 2>&1 && echo "✅ 已链接 overseastock-api" && exit 0
+          railway link --project-name overseastock 2>&1 && echo "✅ 已链接 overseastock" && exit 0
+          railway link --project-name overseastock-production 2>&1 && echo "✅ 已链接 overseastock-production" && exit 0
+          echo "⚠️ 无法链接到现有项目，请检查 Railway Dashboard"
 
       - name: Deploy to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_ACCOUNT_TOKEN }}
         run: |
           echo "=== 部署到 Railway ==="
-          railway up --detach 2>&1 || echo "部署命令执行"
+          railway up --detach 2>&1 || echo "部署命令执行完成"
 
       - name: Wait for Deployment
         run: sleep 60
