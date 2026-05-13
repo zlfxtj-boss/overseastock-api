@@ -18,10 +18,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
 
       - name: Install Dependencies
-        run: npm install
+        run: npm ci
 
       - name: Install Railway CLI
         run: npm install -g @railway/cli
@@ -31,7 +30,7 @@ jobs:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_ACCOUNT_TOKEN }}
         run: |
           echo "Verifying Railway token..."
-          echo "$RAILWAY_TOKEN" | railway login --token /dev/stdin 2>&1 || true
+          railway login --token "$RAILWAY_TOKEN" 2>&1 || echo "Login attempt completed"
           
           # Try to link existing project
           echo "=== 链接 Railway 项目 ==="
