@@ -466,6 +466,24 @@ app.post('/api/admin/login', async (req, res) => {
   }
 });
 
+// 删除客户
+app.delete('/api/customers/:id', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: '数据库未连接' });
+  try {
+    const result = await pool.query(
+      'DELETE FROM customers WHERE id=$1 RETURNING id, username',
+      [req.params.id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: '客户不存在' });
+    }
+    res.json({ success: true, message: `已删除客户: ${result.rows[0].username}` });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: '删除失败' });
+  }
+});
+
 // ============ 客户 API ============
 
 // 客户注册 - 使用bcrypt加密密码
