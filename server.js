@@ -604,7 +604,37 @@ app.get('/api/orders/:customerId', async (req, res) => {
   }
 });
 
-// 健康检查
+// 删除订单
+app.delete('/api/orders/:id', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: '数据库未连接' });
+  try {
+    const result = await pool.query(
+      'DELETE FROM orders WHERE id=$1 RETURNING id',
+      [req.params.id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: '订单不存在' });
+    }
+    res.json({ success: true, message: '删除成功' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: '删除失败' });
+  }
+});
+
+// 清空所有订单
+app.delete('/api/orders', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: '数据库未连接' });
+  try {
+    const result = await pool.query('DELETE FROM orders RETURNING id');
+    res.json({ success: true, message: `已删除 ${result.rowCount} 个订单` });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: '清空失败' });
+  }
+});
+
+// 启动服务
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
 });
